@@ -2,7 +2,7 @@
 -- this program finds the number of partial tensors which are finitely
 -- completable from the observed entries
  
-dims = [2, 2, 2]
+dims = [2, 2]
 
 ndims = length dims
 -- Make sure dimensions are valid
@@ -46,7 +46,15 @@ ranks = for s in S list (for tsr in s list rank(jacobian(ideal tsr)))
 ncompletable = for nobserved from 1 to nentries list number(ranks#(nobserved - 1), r -> r == Jrank)
 
 for i from 1 to nentries do (
-    << ncompletable#(i - 1) << "/" << ntensors#(i - 1) << " of " << toString(dims) << " tensors with " << i << " observed entries are finitely completable\n"
+    << ncompletable#(i - 1)
+    << "/"
+    << ntensors#(i - 1)
+    << " of "
+    << replace(///\[|\]///, "", replace(", ", "x", toString(dims)))
+    << (if ndims == 1 then "x1" else "")
+    << " tensors with "
+    << i
+    << " observed entries are finitely completable\n"
 )
 
 
