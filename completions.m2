@@ -2,7 +2,7 @@
 -- this program finds the number of partial tensors which are finitely
 -- completable from the observed entries
  
-dims = [2, 2]
+dims = [2, 2, 4]
 
 ndims = length dims
 -- Make sure dimensions are valid
@@ -34,27 +34,28 @@ tensorentries = for seq in entryparams list (fold((a,b) -> a * b, seq))
 I = ideal tensorentries
 J = jacobian I
 
+print("preparatory steps ready")
+
 -- Compute the rank of the Jacobian corresponding to all entries
 Jrank = rank J
 
--- For all numbers of observed entries, form all possible sets of observed entries
-S = for nobserved from 1 to nentries list subsets(tensorentries, nobserved)
-ntensors = for s in S list length s
+print("rank of full Jacobian computed")
 
--- Get the ranks of all Jacobians corresponding to partial tensors
-ranks = for s in S list (for tsr in s list rank(jacobian(ideal tsr)))
-ncompletable = for nobserved from 1 to nentries list number(ranks#(nobserved - 1), r -> r == Jrank)
-
+ncompletable = new MutableList from (for i from 1 to nentries list 0)
+ntensors = new MutableList from (for i from 1 to nentries list 0)
 for i from 1 to nentries do (
-    << ncompletable#(i - 1)
-    << "/"
-    << ntensors#(i - 1)
-    << " of "
-    << replace(///\[|\]///, "", replace(", ", "x", toString(dims)))
-    << (if ndims == 1 then "x1" else "")
-    << " tensors with "
-    << i
-    << " observed entries are finitely completable\n"
+    S = subsets(tensorentries, i);
+    ntensors#(i - 1) = ntensors#(i - 1) + (length S);
+    ncompletable#(i - 1) = ncompletable#(i - 1) + number(S, s -> rank(jacobian(ideal s)) == Jrank);
+    << ncompletable#(i - 1);
+    << "/";
+    << ntensors#(i - 1);
+    << " of ";
+    << replace(///\[|\]///, "", replace(", ", "x", toString(dims)));
+    << (if ndims == 1 then "x1" else "");
+    << " tensors with ";
+    << i;
+    << " observed entries are finitely completable\n";
+    << flush;
 )
-
 
