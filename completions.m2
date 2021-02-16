@@ -2,7 +2,7 @@
 -- this program finds the number of partial tensors which are finitely
 -- completable from the observed entries
  
-dims = [2, 2, 3]
+dims = [2, 2]
 
 ndims = length dims
 -- Make sure dimensions are valid
@@ -19,9 +19,10 @@ params = for i from 0 to (ndims - 1) list (
 -- Create a polynomial ring of the parameters
 R = QQ(params)
 
+print(params)
 -- get all sequences of parameters whose product corresponds to an entry
 entryparams = fold((a, b) -> for c in (a**b) list flatten c, params)
-
+print(entryparams)
 -- get the entry parametrisations by taking products
 tensorentries = for seq in entryparams list (fold((a,b) -> (a_R)*(b_R), seq)) 
 
