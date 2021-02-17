@@ -1,6 +1,5 @@
--- Given dimensions and number of observed entries for a partial tensor,
--- this program finds the number of partial tensors which are finitely
--- completable from the observed entries
+-- Given tensor dimensions, this program finds for each number of observed entries
+-- the number of partial tensors which are finitely completable
  
 dims = [2, 2, 4]
 
