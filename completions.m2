@@ -1,7 +1,7 @@
 -- Given tensor dimensions, this program finds for each number of observed entries
 -- the number of partial tensors which are finitely completable
  
-dims = [2, 2, 4]
+dims = [2,2,4]
 
 ndims = length dims
 -- Make sure dimensions are valid
@@ -40,12 +40,21 @@ Jrank = rank J
 
 print("rank of full Jacobian computed")
 
+isFinitelyCompletable = (params, fullJacobianRank) -> (
+    r = getPartialJacobianRank(params);
+    return r == fullJacobianRank;
+)
+
+getPartialJacobianRank = params -> (
+    return rank(jacobian(ideal params));
+)
+
 ncompletable = new MutableList from (for i from 1 to nentries list 0)
 ntensors = new MutableList from (for i from 1 to nentries list 0)
 for i from 1 to nentries do (
     S = subsets(tensorentries, i);
     ntensors#(i - 1) = ntensors#(i - 1) + (length S);
-    ncompletable#(i - 1) = ncompletable#(i - 1) + number(S, s -> rank(jacobian(ideal s)) == Jrank);
+    ncompletable#(i - 1) = ncompletable#(i - 1) + number(S, s -> isFinitelyCompletable(s, Jrank));
     << ncompletable#(i - 1);
     << "/";
     << ntensors#(i - 1);
