@@ -1,7 +1,7 @@
 -- Given tensor dimensions, this program finds for each number of observed entries
 -- the number of partial tensors which are finitely completable
  
-dims = [2, 2, 4]
+dims = [2,2,2,2]
 
 ndims = length dims
 -- Make sure dimensions are valid
@@ -53,8 +53,14 @@ getPartialJacobianRank = params -> (
 ncompletable = new MutableList from (for i from 1 to nentries list 0)
 currentSize = 1;
 locations = new MutableList from { 0 };
+nOfTensors = 1 + sum(for i from 1 to nentries list binomial(nentries, i));
+progress = 0;
+ndots = 0;
 
 while not currentSize == 0 do (
+    newDots = floor((numeric progress) / nOfTensors * 100 - ndots);
+    ndots = ndots + newDots;
+    scan(1 .. newDots, i -> << "." << flush);
     n = currentSize - 1;
     locationsCopy = toList locations;
     partialEntries = tensorentries_locationsCopy;
@@ -64,6 +70,7 @@ while not currentSize == 0 do (
         for i from currentSize to nentries do (
             nCompletableToAdd = binomial(entriesLeft, i - currentSize);
             ncompletable#(i - 1) = ncompletable#(i - 1) + nCompletableToAdd;
+            progress = progress + nCompletableToAdd;
         );
         if locations#(n) == nentries - 1 then (
             currentSize = currentSize - 1;
@@ -75,6 +82,7 @@ while not currentSize == 0 do (
             locations#(n) = locations#(n) + 1;
         );
     ) else (
+        progress = progress + 1;
         if locations#(n) == nentries - 1 then (
             currentSize = currentSize - 1;
             locations = drop(locations, -1);
@@ -87,6 +95,7 @@ while not currentSize == 0 do (
         );
     );
 )
+<< "\n";
 
 for i from 1 to nentries do (
     ntensors = binomial(nentries, i);
