@@ -1,7 +1,7 @@
 -- Given tensor dimensions, this program finds for each number of observed entries
 -- the number of partial tensors which are finitely completable
  
-dims = [2,2, 4]
+dims = [2, 2, 4]
 
 ndims = length dims
 -- Make sure dimensions are valid
@@ -49,15 +49,50 @@ getPartialJacobianRank = params -> (
     return rank(jacobian(ideal params));
 )
 
+
 ncompletable = new MutableList from (for i from 1 to nentries list 0)
-ntensors = new MutableList from (for i from 1 to nentries list 0)
+currentSize = 1;
+locations = new MutableList from { 0 };
+
+while not currentSize == 0 do (
+    n = currentSize - 1;
+    locationsCopy = toList locations;
+    partialEntries = tensorentries_locationsCopy;
+    completable = isFinitelyCompletable(partialEntries, Jrank);
+    if completable then (
+        entriesLeft = nentries - (last locations) - 1;
+        for i from currentSize to nentries do (
+            nCompletableToAdd = binomial(entriesLeft, i - currentSize);
+            ncompletable#(i - 1) = ncompletable#(i - 1) + nCompletableToAdd;
+        );
+        if locations#(n) == nentries - 1 then (
+            currentSize = currentSize - 1;
+            locations = drop(locations, -1);
+            if n > 0 then (
+                locations#(n - 1) = locations#(n - 1) + 1;
+            );
+        ) else (
+            locations#(n) = locations#(n) + 1;
+        );
+    ) else (
+        if locations#(n) == nentries - 1 then (
+            currentSize = currentSize - 1;
+            locations = drop(locations, -1);
+            if n > 0 then (
+                locations#(n - 1) = locations#(n - 1) + 1;
+            );
+        ) else (
+            locations = append(locations, locations#(n) + 1);
+            currentSize = currentSize + 1;
+        );
+    );
+)
+
 for i from 1 to nentries do (
-    S = subsets(tensorentries, i);
-    ntensors#(i - 1) = ntensors#(i - 1) + (length S);
-    ncompletable#(i - 1) = ncompletable#(i - 1) + number(S, s -> isFinitelyCompletable(s, Jrank));
+    ntensors = binomial(nentries, i);
     << ncompletable#(i - 1);
     << "/";
-    << ntensors#(i - 1);
+    << ntensors;
     << " of ";
     << replace(///\[|\]///, "", replace(", ", "x", toString(dims)));
     << (if ndims == 1 then "x1" else "");
@@ -66,4 +101,3 @@ for i from 1 to nentries do (
     << " observed entries are finitely completable\n";
     << flush;
 )
-
