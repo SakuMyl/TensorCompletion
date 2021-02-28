@@ -1,7 +1,7 @@
 -- Given tensor dimensions, this program finds for each number of observed entries
 -- the number of partial tensors which are finitely completable
  
-dims = [2,2, 4]
+dims = [2, 2, 3]
 
 ndims = length dims
 -- Make sure dimensions are valid

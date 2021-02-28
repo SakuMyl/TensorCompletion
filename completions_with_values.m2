@@ -1,54 +1,54 @@
 -- Given tensor dimensions, this program finds for each number of observed entries
 -- the number of partial tensors which are finitely completable
  
-dims = [2, 2, 4]
+dims = {2, 2, 3}
 
-ndims = length dims
+ndims = #dims
 -- Make sure dimensions are valid
 assert(ndims > 0)
 for d in dims do assert(d > 0)
 assert(ndims == 1 or number(dims, d -> d == 1) == 0)
 
-nentries = fold((a, b) -> a*b, dims)
-
--- Create a polynomial ring of the parameters
-R = QQ[x_1..x_nentries]
+nentries = product(dims)
+nvars = sum(dims)
 
 -- Create the parameter vectors whose outer product equals the complete tensor
-k = 1
-params = for i from 0 to (ndims - 1) list (
-    for j from 1 to dims#i list x_k do k = k + 1
+k = 0
+paramIndices = for i from 0 to (ndims - 1) list (
+    for j from 1 to dims#i list k do k = k + 1
 )
 
 -- get all sequences of parameters whose product corresponds to an entry
 -- if ndims >= 2, take the cartesian product of ndims sets, otherwise put each element to its own set
-entryparams = (if length(params) == 1
-    then for param in params#0 list { param }
-    else fold((a, b) -> for c in (a**b) list flatten c, params)
+entryparamIndices = (if #paramIndices == 1
+    then for param in paramIndices#0 list { param }
+    else fold((a, b) -> for c in (a**b) list flatten c, paramIndices)
 )
 
--- get the entry parametrisations by taking products of parameters
-tensorentries = for seq in entryparams list (fold((a,b) -> a * b, seq)) 
+x = for i from 1 to nentries list random(QQ);
 
-I = ideal tensorentries
-J = jacobian I
+tensorentries = for seq in entryparamIndices list product(apply(seq, k -> x#(k)))
 
-print("preparatory steps ready")
+J = mutableMatrix(QQ, nvars, nentries)
+for j from 0 to nentries - 1 do (
+    params = entryparamIndices#j;
+    for i in params do (
+        J_(i, j) = tensorentries#j / x#i;
+    );
+);
 
--- Compute the rank of the Jacobian corresponding to all entries
-Jrank = rank J
+getJacobianRank = (entryIndices) -> (
+    J2 = submatrix(J, toList(entryIndices));
+    return rank(J2);
+)
 
-print("rank of full Jacobian computed")
-
-isFinitelyCompletable = (params, fullJacobianRank) -> (
-    r = getPartialJacobianRank(params);
+isFinitelyCompletable = (entryIndices, fullJacobianRank) -> (
+    r = getJacobianRank(entryIndices);
     return r == fullJacobianRank;
 )
 
-getPartialJacobianRank = params -> (
-    return rank(jacobian(ideal params));
-)
-
+-- Compute the rank of the Jacobian corresponding to all entries
+Jrank = getJacobianRank(toList(0..(nentries - 1)))
 
 ncompletable = new MutableList from (for i from 1 to nentries list 0)
 currentSize = 1;
@@ -62,9 +62,7 @@ while not currentSize == 0 do (
     ndots = ndots + newDots;
     scan(1 .. newDots, i -> << "." << flush);
     n = currentSize - 1;
-    locationsCopy = toList locations;
-    partialEntries = tensorentries_locationsCopy;
-    completable = isFinitelyCompletable(partialEntries, Jrank);
+    completable = isFinitelyCompletable(locations, Jrank);
     if completable then (
         entriesLeft = nentries - (last locations) - 1;
         for i from currentSize to nentries do (
@@ -103,7 +101,7 @@ for i from 1 to nentries do (
     << "/";
     << ntensors;
     << " of ";
-    << replace(///\[|\]///, "", replace(", ", "x", toString(dims)));
+    << replace(///\{|\}///, "", replace(", ", "x", toString(dims)));
     << (if ndims == 1 then "x1" else "");
     << " tensors with ";
     << i;
