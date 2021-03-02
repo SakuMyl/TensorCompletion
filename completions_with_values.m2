@@ -1,7 +1,7 @@
 -- Given tensor dimensions, this program finds for each number of observed entries
 -- the number of partial tensors which are finitely completable
  
-dims = {2, 2, 3}
+dims = {3, 3, 3}
 
 ndims = #dims
 -- Make sure dimensions are valid
@@ -24,6 +24,7 @@ entryparamIndices = (if #paramIndices == 1
     then for param in paramIndices#0 list { param }
     else fold((a, b) -> for c in (a**b) list flatten c, paramIndices)
 )
+print(entryparamIndices)
 
 x = for i from 1 to nentries list random(QQ);
 
