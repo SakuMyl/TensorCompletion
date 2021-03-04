@@ -24,7 +24,6 @@ entryparamIndices = (if #paramIndices == 1
     then for param in paramIndices#0 list { param }
     else fold((a, b) -> for c in (a**b) list flatten c, paramIndices)
 )
-print(entryparamIndices)
 
 x = for i from 1 to nentries list random(QQ);
 
