@@ -52,12 +52,6 @@ void cart_product(
     cart_product_rec(in, out, current, 0);
 }
 
-int fact(int n) {
-    int ret = 1;
-    for (int i = 1; i <= n; i++) ret *= i;
-    return ret;
-}
-
 int binom(int n, int k) {
     if (k > n) return 0;
     if (k == 0 || k == n) return 1;
