@@ -52,17 +52,6 @@ void cart_product(
     cart_product_rec(in, out, current, 0);
 }
 
-void fill_submat(mat &in, mat &out, vector<int> &cols) {
-    assert(in.n_rows == out.n_rows);
-    int k = 0;
-    for (int c : cols) {
-        for (int r = 0; r < out.n_rows; r++) {
-            out(r, k) = in(r, c);
-        }
-        k++;
-    }
-}
-
 int fact(int n) {
     int ret = 1;
     for (int i = 1; i <= n; i++) ret *= i;
@@ -75,19 +64,18 @@ int binom(int n, int k) {
     return binom(n - 1, k - 1) + binom(n - 1, k);
 }
 
-int get_jacobian_rank(mat &full_jacobian, vector<int> &cols) {
-    mat subjacobian(full_jacobian.n_rows, cols.size());
-    fill_submat(full_jacobian, subjacobian, cols);
-    return arma::rank(subjacobian);
+int get_jacobian_rank(mat &full_jacobian, vector<arma::uword> &cols) {
+    arma::uvec cols_vec(&cols.front(), cols.size());
+    return arma::rank(full_jacobian.cols(cols_vec));
 }
 
-int is_finitely_completable(mat &full_jacobian, vector<int> &cols, int full_rank) {
+int is_finitely_completable(mat &full_jacobian, vector<arma::uword> &cols, int full_rank) {
     int r = get_jacobian_rank(full_jacobian, cols);
     return r == full_rank;
 }
 
 int main() {
-    vector<int> dims{ 2, 2, 2, 2, 2 };
+    vector<int> dims{ 2, 3, 3 };
     int ndims = dims.size();
     assert(ndims > 0);
     for (auto d : dims) {
@@ -128,17 +116,16 @@ int main() {
             J(i, j) = tensorentries[j] / x[i];
         }
     }
-    vector<int> all_indices(nentries);
+    vector<arma::uword> all_indices(nentries);
     iota(all_indices.begin(), all_indices.end(), 0);
     int Jrank = get_jacobian_rank(J, all_indices);
     vector<int> ncompletable(nentries, 0);
-    
     int n_tensors = 0;
     for (int i = 0; i <= nentries; i++) {
         n_tensors += binom(nentries, i);
     }
     int current_size = 1;
-    vector<int> locations = { 0 };
+    vector<arma::uword> locations = { 0 };
     int progress = 0;
     int ndots = 0;
     while (current_size != 0) {
