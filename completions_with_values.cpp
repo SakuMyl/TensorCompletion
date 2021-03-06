@@ -5,6 +5,7 @@
 #include <random>
 #include <limits>
 #include <armadillo>
+#include <iterator>
 
 using namespace std;
 using namespace arma;
@@ -68,14 +69,28 @@ int is_finitely_completable(mat &full_jacobian, vector<arma::uword> &cols, int f
     return r == full_rank;
 }
 
-int main() {
-    vector<int> dims{ 2, 3, 3 };
+void get_dimensions(vector<int> &dims) {
+    string str;
+    cout << "Give tensor dimensions separated by spaces: ";
+    getline(cin, str);
+    istringstream is(str);
+    dims.assign(std::istream_iterator<int>(is), std::istream_iterator<int>());
+}
+
+void validate_dimensions(vector<int> &dims) {
     int ndims = dims.size();
     assert(ndims > 0);
     for (auto d : dims) {
         assert(d > 0);
     }
     assert(ndims == 1 || count(dims.begin(), dims.end(), 1) == 0);
+}
+
+int main() {
+    vector<int> dims;
+    get_dimensions(dims); 
+    validate_dimensions(dims);
+    int ndims = dims.size();
     int nentries = product(dims);
     int nvars = sum(dims);
     int k = 0;
@@ -161,12 +176,19 @@ int main() {
         }
     }
     cout << endl;
+    std::string dims_string;
+    for (int i = 0; i < dims.size(); i++) {
+        dims_string += to_string(dims[i]);
+        if (i != dims.size() - 1) dims_string += 'x';
+    }
     for (int i = 1; i <= nentries; i++) {
         int ntensors = binom(nentries, i);
         cout << ncompletable[i - 1];
         cout << "/";
         cout << ntensors;
-        cout << " of tensors with ";
+        cout << " of ";
+        cout << dims_string;
+        cout << " tensors with ";
         cout << i;
         cout << " observed entries are finitely completable" << endl;
         cout << flush;
