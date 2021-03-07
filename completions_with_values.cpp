@@ -79,11 +79,20 @@ void get_dimensions(vector<int> &dims) {
 
 void validate_dimensions(vector<int> &dims) {
     int ndims = dims.size();
-    assert(ndims > 0);
-    for (auto d : dims) {
-        assert(d > 0);
+    if (ndims == 0) {
+        cout << "No dimensions given, exiting." << endl;
+        exit(EXIT_FAILURE);
     }
-    assert(ndims == 1 || count(dims.begin(), dims.end(), 1) == 0);
+    for (auto d : dims) {
+        if(d <= 0) {
+            cout << "Invalid dimensions given, exiting." << endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (ndims != 1 && count(dims.begin(), dims.end(), 1) > 0) {
+        cout << "Redundant dimensions of length 1 given, exiting." << endl;
+        exit(EXIT_FAILURE);
+    }
 }
 
 int main() {
@@ -181,6 +190,7 @@ int main() {
         dims_string += to_string(dims[i]);
         if (i != dims.size() - 1) dims_string += 'x';
     }
+    if (dims.size() == 1) dims_string += "x1";
     for (int i = 1; i <= nentries; i++) {
         int ntensors = binom(nentries, i);
         cout << ncompletable[i - 1];
