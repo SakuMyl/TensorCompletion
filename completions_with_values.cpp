@@ -95,10 +95,32 @@ void validate_dimensions(vector<int> &dims) {
     }
 }
 
+void print_progress(float fprogress) {
+    int percentage = int(fprogress * 100);
+    int bar_width = 70;
+    std::cout << "[";
+    int pos = bar_width * fprogress;
+    for (int i = 0; i < bar_width; ++i) {
+        if (i < pos) std::cout << "=";
+        else if (i == pos) std::cout << ">";
+        else std::cout << " ";
+    }
+    cout << "] " << percentage << " %\r";
+    cout.flush();
+}
+
 int main() {
     vector<int> dims;
     get_dimensions(dims); 
     validate_dimensions(dims);
+    std::string dims_string;
+    for (int i = 0; i < dims.size(); i++) {
+        dims_string += to_string(dims[i]);
+        if (i != dims.size() - 1) dims_string += 'x';
+    }
+    if (dims.size() == 1) dims_string += "x1";
+    cout << "Computing completability of " << dims_string << " partial tensors" << endl;
+    print_progress(0);
     int ndims = dims.size();
     int nentries = product(dims);
     int nvars = sum(dims);
@@ -144,14 +166,11 @@ int main() {
     }
     int current_size = 1;
     vector<arma::uword> locations = { 0 };
-    int progress = 0;
-    int ndots = 0;
+    int progress = 1;
+    // Initialize percentage to -1 to get the progress bar immediately in the beginning
+    int percentage = 0;
+    int bar_width = 70;
     while (current_size != 0) {
-        int new_dots = floor((double) progress / n_tensors * 100 - ndots);
-        for (int i = 1; i <= new_dots; i++) {
-            cout << "." << flush;
-        }
-        ndots += new_dots;
         int n = current_size - 1;
         bool completable = is_finitely_completable(J, locations, Jrank);
         if (completable) {
@@ -183,14 +202,14 @@ int main() {
                 current_size++;
             }
         }
+        float fprogress = (float) progress / n_tensors;
+        int new_percentage = int(fprogress * 100);
+        if (new_percentage > percentage) {
+            percentage = new_percentage;
+            print_progress(fprogress);
+        }
     }
     cout << endl;
-    std::string dims_string;
-    for (int i = 0; i < dims.size(); i++) {
-        dims_string += to_string(dims[i]);
-        if (i != dims.size() - 1) dims_string += 'x';
-    }
-    if (dims.size() == 1) dims_string += "x1";
     for (int i = 1; i <= nentries; i++) {
         int ntensors = binom(nentries, i);
         cout << ncompletable[i - 1];
