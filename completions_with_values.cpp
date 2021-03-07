@@ -98,15 +98,12 @@ void validate_dimensions(vector<int> &dims) {
 void print_progress(float fprogress) {
     int percentage = int(fprogress * 100);
     int bar_width = 70;
-    std::cout << "[";
+    cout << "[";
     int pos = bar_width * fprogress;
-    for (int i = 0; i < bar_width; ++i) {
-        if (i < pos) std::cout << "=";
-        else if (i == pos) std::cout << ">";
-        else std::cout << " ";
-    }
-    cout << "] " << percentage << " %\r";
-    cout.flush();
+    for (int i = 0; i < pos; i++) cout << "=";
+    if (pos != bar_width) cout << ">";
+    for (int i = pos + 1; i < bar_width; i++) cout << " ";
+    cout << "] " << percentage << " %\r" << flush;
 }
 
 int main() {
