@@ -130,6 +130,16 @@ void validate_dimensions(vector<int> &dims) {
     }
 }
 
+boost::dynamic_bitset<> sigma_perm(boost::dynamic_bitset<> T, vector<vector<int>> &perms, vector<int> dim_prods)
+{
+    unsigned long source = 0;
+    int M = T.count();
+    for (int i = 0; i < M; i++) {
+
+        source += 1 >> L;
+    }
+}
+
 void print_progress(float fprogress) {
     int percentage = int(fprogress * 100);
     int bar_width = 70;
@@ -145,11 +155,10 @@ int main() {
     vector<int> dims;
     get_dimensions(dims); 
     validate_dimensions(dims);
-    vector<int> dimprods(dims.size() - 1);
+    vector<int> dim_prods(dims.size() - 1);
     int mult = dims[dims.size() - 1];
     for (int i = dims.size() - 1; i > 0; i--) {
-        dimprods[i - 1] = mult;
-        cout << dimprods[i - 1] << endl;
+        dim_prods[i - 1] = mult;
         mult *= dims[i - 1];
     }
     std::string dims_string;
@@ -217,13 +226,13 @@ int main() {
     for (int i = 0; i <= nentries; i++) tensors_in_total += binom(nentries, i);
     // All possible partial tensors represented as subsets of all entries as a bitmap
     vector<boost::dynamic_bitset<>> S(tensors_in_total);
+    unordered_set<unsigned long> Shash; 
     for (int i = 0; i < tensors_in_total; i++) {
         boost::dynamic_bitset<> s(nentries, i);
         S[i] = s;
+        Shash.insert(s.to_ulong());
     }
-    vector<vector<int>> D;
-    cart_product(dims_indices, D);
-    #pragma omp parallel for
+
     for (int i = 1; i <= nentries; i++) {
         int ntensors = binom(nentries, i);
         vector<int> perm(dims[0]);
