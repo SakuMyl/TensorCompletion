@@ -2,6 +2,7 @@
 -- the number of partial tensors which are finitely completable
  
 dims = {2, 2, 4}
+dims = sort(dims)
 dimprods = accumulate((a, b) -> a * b, 1, drop(dims, 1));
 ndims = #dims
 -- Make sure dimensions are valid
@@ -83,6 +84,21 @@ nOfTensors = 1 + sum(for i from 1 to nentries list binomial(nentries, i))
 progress = 0
 ndots = 0
 
+A = {}
+index = 0
+prev = 0
+for i from 0 to #dims - 1 do (
+    d = dims#i;
+    if prev != d then (
+        if i - index > 1 then (
+            A = append(A, (i, index));
+        );
+        index = i;
+    )
+    prev = d;
+)
+print(A);
+
 D = cartProduct(for d in dims list toList(0..(d - 1)))
 for i from 1 to nentries do (
     ntensors = binomial(nentries, i);
@@ -90,7 +106,8 @@ for i from 1 to nentries do (
     ncompletable = 0;
     while #S > 0 do (
         T = (elements S)#0;
-        sigmaperms = cartProduct(for d in dims list permutations(d));
+        sigmaperms = for d in dims list permutations(d);
+        tauperms = 
         Tperms = apply(sigmaperms, permset -> (
             -- permset contains for each index of entries of T a permutation
             return for j from 0 to #T - 1 list (
