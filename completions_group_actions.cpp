@@ -6,7 +6,7 @@
 #include <limits>
 #include <armadillo>
 #include <iterator>
-#include <unordered_set>
+#include <unordered_map>
 #include <boost/dynamic_bitset.hpp>
 
 using namespace std;
@@ -130,15 +130,14 @@ void validate_dimensions(vector<int> &dims) {
     }
 }
 
-boost::dynamic_bitset<> sigma_perm(boost::dynamic_bitset<> T, vector<vector<int>> &perms, vector<int> dim_prods)
-{
-    unsigned long source = 0;
-    int M = T.count();
-    for (int i = 0; i < M; i++) {
-
-        source += 1 >> L;
-    }
-}
+// boost::dynamic_bitset<> sigma_perm(boost::dynamic_bitset<> T, vector<vector<int>> &perms, vector<int> dim_prods)
+// {
+//     unsigned long source = 0;
+//     int M = T.count();
+//     for (int i = 0; i < M; i++) {
+//         source += 1 >> L;
+//     }
+// }
 
 void print_progress(float fprogress) {
     int percentage = int(fprogress * 100);
@@ -151,15 +150,44 @@ void print_progress(float fprogress) {
     cout << "] " << percentage << " %\r" << flush;
 }
 
+struct vecHash
+{
+    size_t operator()(const vector<arma::uword> &V) const {
+        int hash = V.size();
+        for (auto &i : V) {
+            hash ^= i + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        }
+        return hash;
+    }
+};
+
+int index_vec_to_int(vector<arma::uword> &long_index, vector<int> &multipliers)
+{
+    int ret = 0;
+    for (int i = 0; i < long_index.size(); i++) {
+        ret += long_index[i] * multipliers[i];
+    }
+    return ret;
+}
+
+void shorten_indices(vector<vector<arma::uword>> &tensor, vector<arma::uword> &out, vector<int> &multipliers)
+{
+    for (int j = 0; j < tensor.size(); j++) {
+        out[j] = index_vec_to_int(tensor[j], multipliers);
+    }
+}
+
+
 int main() {
     vector<int> dims;
     get_dimensions(dims); 
     validate_dimensions(dims);
-    vector<int> dim_prods(dims.size() - 1);
-    int mult = dims[dims.size() - 1];
-    for (int i = dims.size() - 1; i > 0; i--) {
-        dim_prods[i - 1] = mult;
-        mult *= dims[i - 1];
+    sort(dims.begin(), dims.end());
+    int ndims = dims.size();
+    vector<int> dim_prods(ndims);
+    dim_prods[ndims - 1] = 1;
+    for (int i = ndims - 1; i > 0; i--) {
+        dim_prods[i - 1] = dim_prods[i] * dims[i];
     }
     std::string dims_string;
     for (int i = 0; i < dims.size(); i++) {
@@ -169,9 +197,7 @@ int main() {
     if (dims.size() == 1) dims_string += "x1";
     cout << "Computing completability of " << dims_string << " partial tensors" << endl;
     print_progress(0);
-    int ndims = dims.size();
     int nentries = product(dims);
-    boost::dynamic_bitset<> b(nentries);
     int nvars = sum(dims);
     int k = 0;
     vector<vector<int>> param_indices(ndims);
@@ -180,6 +206,31 @@ int main() {
             param_indices[i].push_back(k);
             k++;
         }
+    }
+    vector<tuple<int, int>> A;
+    int first_index = 0;
+    int prev = 0;
+    for (int i = 0; i <= ndims; i++) {
+        int d = i == ndims ? 0 : dims[i];
+        if (prev != d) {
+            if (i - first_index > 1) {
+                A.push_back(make_tuple(first_index, i - 1));
+            }
+            first_index = i;
+        }
+        prev = d;
+    }
+    vector<int> tauperm_indices(ndims, 0);
+    for (int i = 0; i < ndims; i++) {
+        int j = -1;
+        for (int k = 0; k < A.size(); k++) {
+            tuple<int, int> pair = A[k];
+            if (get<0>(pair) <= i && get<1>(pair) >= i) {
+                j = k;
+                break;
+            }
+        }
+        tauperm_indices[i] = j;
     }
     vector<vector<int>> entryparam_indices;
     cart_product(param_indices, entryparam_indices);
@@ -214,9 +265,9 @@ int main() {
         n_tensors += binom(nentries, i);
     }
 
-    vector<vector<int>> dims_indices(dims.size());
-    for (int i = 0; i < dims.size(); i++) {
-        vector<int> vec(dims[i]);
+    vector<vector<arma::uword>> dims_indices(ndims);
+    for (int i = 0; i < ndims; i++) {
+        vector<arma::uword> vec(dims[i]);
         for (int j = 0; j < dims[i]; j++) {
             vec[j] = j;
         }
@@ -225,19 +276,49 @@ int main() {
     int tensors_in_total = 0;
     for (int i = 0; i <= nentries; i++) tensors_in_total += binom(nentries, i);
     // All possible partial tensors represented as subsets of all entries as a bitmap
-    vector<boost::dynamic_bitset<>> S(tensors_in_total);
-    unordered_set<unsigned long> Shash; 
-    for (int i = 0; i < tensors_in_total; i++) {
-        boost::dynamic_bitset<> s(nentries, i);
-        S[i] = s;
-        Shash.insert(s.to_ulong());
-    }
-
+    // vector<boost::dynamic_bitset<>> S(tensors_in_total);
+    // unordered_set<unsigned long> Shash; 
+    // for (int i = 0; i < tensors_in_total; i++) {
+    //     boost::dynamic_bitset<> s(nentries, i);
+    //     S[i] = s;
+    //     Shash.insert(s.to_ulong());
+    // }
+    vector<vector<arma::uword>> D;
+    cart_product(dims_indices, D);
+    
     for (int i = 1; i <= nentries; i++) {
+        vector<vector<vector<arma::uword>>> S;
+        subsets(D, S, i);
+        unordered_map<vector<arma::uword>, vector<vector<arma::uword>>, vecHash> Shash;
+        for (auto &s : S) {
+            vector<arma::uword> vec(i);
+            for (int j = 0; j < i; j++) {
+                vec[j] = index_vec_to_int(s[j], dim_prods);
+            }
+            Shash.insert({vec, s});
+        }
         int ntensors = binom(nentries, i);
         vector<int> perm(dims[0]);
         iota(perm.begin(), perm.end(), 0);
         int n_completable = 0;
+        while (!S.empty()) {
+            int n_unique_tensors = 0;
+            vector<vector<arma::uword>> T = *(S.begin());
+            vector<vector<arma::uword>> Tcopy(i);
+            copy(T.begin(), T.end(), Tcopy.begin());
+            vector<arma::uword> Tkey(T.size());
+            shorten_indices(T, Tkey, dim_prods);
+            if (!Shash.extract(Tkey).empty()) n_unique_tensors++;
+            while (next_permutation(perm.begin(), perm.end())) {
+                for (int j = 0; j < T.size(); j++) {
+                    Tcopy[j][0] = perm[T[j][0]];
+                }
+                vector<arma::uword> key(Tcopy.size());
+                shorten_indices(Tcopy, key, dim_prods);
+                if (!Shash.extract(key).empty()) n_unique_tensors++;
+            }
+            if (is_finitely_completable(J, Tkey, Jrank)) n_completable += n_unique_tensors;
+        }
         cout << n_completable;
         cout << "/";
         cout << ntensors;
