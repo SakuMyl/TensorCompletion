@@ -53,6 +53,41 @@ void cart_product(
     cart_product_rec(in, out, current, 0);
 }
 
+template <typename T>
+vector<T> *subsets_rec(
+    vector<T> &in,
+    vector<T> *out,
+    vector<T> &current,
+    int k,
+    int index,
+    int depth
+    ) {
+    if (depth == k) {
+        vector<T> vec(current.size());
+        copy(current.begin(), current.end(), vec.begin());
+        *out = vec;
+        return out + 1;
+    }
+    for (int i = index; i < in.size(); i++) {
+        current.push_back(in[i]);
+        out = subsets_rec(in, out, current, k, i + 1, depth + 1);
+        current.pop_back();
+    }
+    return out;
+}
+
+template <typename T>
+void subsets(
+    vector<T> &in,
+    vector<T> *out,
+    int k
+    ) {
+    assert(k >= 0);
+    assert(k <= in.size());
+    vector<T> current;
+    subsets_rec(in, out, current, k, 0, 0);
+}
+
 int binom(int n, int k) {
     if (k > n) return 0;
     if (k == 0 || k == n) return 1;
@@ -117,7 +152,7 @@ int main() {
     }
     if (dims.size() == 1) dims_string += "x1";
     cout << "Computing completability of " << dims_string << " partial tensors" << endl;
-    print_progress(0);
+    //print_progress(0);
     int ndims = dims.size();
     int nentries = product(dims);
     int nvars = sum(dims);
@@ -156,59 +191,55 @@ int main() {
     vector<arma::uword> all_indices(nentries);
     iota(all_indices.begin(), all_indices.end(), 0);
     int Jrank = get_jacobian_rank(J, all_indices);
-    vector<int> ncompletable(nentries, 0);
     int n_tensors = 0;
     for (int i = 0; i <= nentries; i++) {
         n_tensors += binom(nentries, i);
     }
-    int current_size = 1;
-    vector<arma::uword> locations = { 0 };
-    int progress = 1;
-    int percentage = 0;
-    int bar_width = 70;
-    while (current_size != 0) {
-        int n = current_size - 1;
-        bool completable = is_finitely_completable(J, locations, Jrank);
-        if (completable) {
-            int entries_left = nentries - locations[locations.size() - 1] - 1;
-            for (int i = current_size; i <= nentries; i++) {
-                int n_completable_to_add = binom(entries_left, i - current_size);
-                ncompletable[i - 1] += n_completable_to_add;
-                progress += n_completable_to_add;
-            }
-            if (locations[n] == nentries - 1) {
-                current_size--;
-                locations.pop_back();
-                if (n > 0) {
-                    locations[n - 1]++;
-                }
-            } else {
-                locations[n]++;
-            }
-        } else {
-            progress++;
-            if (locations[n] == nentries - 1) {
-                current_size--;
-                locations.pop_back();
-                if (n > 0) {
-                    locations[n - 1]++;
-                }
-            } else {
-                locations.push_back(locations[n] + 1);
-                current_size++;
-            }
+
+    vector<vector<int>> dims_indices(dims.size());
+    for (int i = 0; i < dims.size(); i++) {
+        vector<int> vec(dims[i]);
+        for (int j = 0; j < dims[i]; j++) {
+            vec[j] = j;
         }
-        float fprogress = (float) progress / n_tensors;
-        int new_percentage = int(fprogress * 100);
-        if (new_percentage > percentage) {
-            percentage = new_percentage;
-            print_progress(fprogress);
-        }
+        dims_indices[i] = vec;
+    }
+
+    int threads = omp_get_max_threads();
+    vector<vector<int>> ncompletable(nentries + 1);
+    for (int i = 0; i <= nentries; i++) {
+        vector<int> vec(threads, 0);
+        ncompletable[i] = vec;
+    }
+    vector<vector<arma::uword>> S(n_tensors);
+    vector<arma::uword> *ptr = S.data();
+    for (int i = 0; i <= nentries; i++) {
+        subsets(all_indices, ptr, i);
+        ptr += binom(nentries, i);
+    }
+    #pragma omp for schedule(dynamic, 16)
+    for (int i = 0; i < S.size(); i++) {
+        vector<arma::uword> &s = S[i];
+        int id = omp_get_thread_num();
+        if (is_finitely_completable(J, s, Jrank)) ncompletable[s.size()][id]++;
     }
     cout << endl;
-    for (int i = 1; i <= nentries; i++) {
+
+    // for (int i = 1; i <= nentries; i++) {
+    //     vector<vector<arma::uword>> S;
+    //     subsets(all_indices, S, i);
+    //     for (auto &s : S) {
+    //         if (is_finitely_completable(J, s, Jrank)) ncompletable[i]++;
+    //     }
+    // }
+
+    for (int i = 0; i <= nentries; i++) {
         int ntensors = binom(nentries, i);
-        cout << ncompletable[i - 1];
+        int ncompletable_all = 0;
+        for (int j = 0; j < threads; j++) {
+            ncompletable_all += ncompletable[i][j];
+        }
+        cout << ncompletable_all;
         cout << "/";
         cout << ntensors;
         cout << " of ";

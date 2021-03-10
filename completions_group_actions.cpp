@@ -215,13 +215,15 @@ int main() {
     }
     int tensors_in_total = 0;
     for (int i = 0; i <= nentries; i++) tensors_in_total += binom(nentries, i);
+    // All possible partial tensors represented as subsets of all entries as a bitmap
     vector<boost::dynamic_bitset<>> S(tensors_in_total);
-    for (int i = 0, i < tensors_in_total; i++) {
-        boost::dynamic_bitset s(nentries, i);
+    for (int i = 0; i < tensors_in_total; i++) {
+        boost::dynamic_bitset<> s(nentries, i);
         S[i] = s;
     }
     vector<vector<int>> D;
     cart_product(dims_indices, D);
+    #pragma omp parallel for
     for (int i = 1; i <= nentries; i++) {
         int ntensors = binom(nentries, i);
         vector<int> perm(dims[0]);
