@@ -176,13 +176,13 @@ int iterate_perms(
     Tensor &perm_base,
     Tensor &current_perm,
     unordered_map<SimplifiedTensor, Tensor, vecHash> &hashmap,
-    vector<int> dim_prods,
+    vector<int> &multipliers,
     int n_unique,
     int index
     ) {
     if (index == perms.size()) {
         SimplifiedTensor key(current_perm.size());
-        shorten_indices(current_perm, key, dim_prods);
+        shorten_indices(current_perm, key, multipliers);
         if (!hashmap.extract(key).empty()) return n_unique + 1;
         else return n_unique;
     }
@@ -191,7 +191,7 @@ int iterate_perms(
         for (int entry = 0; entry < perm_base.size(); entry++) {
             current_perm[entry][index] = perm[perm_base[entry][index]];
         }
-        n_unique = iterate_perms(perms, perm_base, current_perm, hashmap, dim_prods, n_unique, index + 1);
+        n_unique = iterate_perms(perms, perm_base, current_perm, hashmap, multipliers, n_unique, index + 1);
     } while (next_permutation(perm.begin(), perm.end()));
     return n_unique;
 }
