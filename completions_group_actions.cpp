@@ -13,6 +13,9 @@ using namespace std;
 using namespace arma;
 const double EPS = 1E-9;
 
+using Tensor = vector<vector<arma::uword>>;
+using SimplifiedTensor = vector<arma::uword>;
+
 template <typename T>
 T sum(vector<T> &vec) {
     T ret = 0;
@@ -99,7 +102,7 @@ int get_jacobian_rank(mat &full_jacobian, vector<arma::uword> &cols) {
     return arma::rank(full_jacobian.cols(cols_vec));
 }
 
-int is_finitely_completable(mat &full_jacobian, vector<arma::uword> &cols, int full_rank) {
+int is_finitely_completable(mat &full_jacobian, SimplifiedTensor &cols, int full_rank) {
     int r = get_jacobian_rank(full_jacobian, cols);
     return r == full_rank;
 }
@@ -143,7 +146,7 @@ void print_progress(float fprogress) {
 
 struct vecHash
 {
-    size_t operator()(const vector<arma::uword> &V) const {
+    size_t operator()(const SimplifiedTensor &V) const {
         int hash = V.size();
         for (auto &i : V) {
             hash ^= i + 0x9e3779b9 + (hash << 6) + (hash >> 2);
@@ -161,13 +164,37 @@ int index_vec_to_int(vector<arma::uword> &long_index, vector<int> &multipliers)
     return ret;
 }
 
-void shorten_indices(vector<vector<arma::uword>> &tensor, vector<arma::uword> &out, vector<int> &multipliers)
+void shorten_indices(Tensor &tensor, SimplifiedTensor &out, vector<int> &multipliers)
 {
     for (int j = 0; j < tensor.size(); j++) {
         out[j] = index_vec_to_int(tensor[j], multipliers);
     }
 }
 
+int iterate_perms(
+    vector<vector<int>> &perms,
+    Tensor &perm_base,
+    Tensor &current_perm,
+    unordered_map<SimplifiedTensor, Tensor, vecHash> &hashmap,
+    vector<int> dim_prods,
+    int n_unique,
+    int index
+    ) {
+    if (index == perms.size()) {
+        SimplifiedTensor key(current_perm.size());
+        shorten_indices(current_perm, key, dim_prods);
+        if (!hashmap.extract(key).empty()) return n_unique + 1;
+        else return n_unique;
+    }
+    vector<int> &perm = perms[index];
+    do {
+        for (int entry = 0; entry < perm_base.size(); entry++) {
+            current_perm[entry][index] = perm[perm_base[entry][index]];
+        }
+        n_unique = iterate_perms(perms, perm_base, current_perm, hashmap, dim_prods, n_unique, index + 1);
+    } while (next_permutation(perm.begin(), perm.end()));
+    return n_unique;
+}
 
 int main() {
     vector<int> dims;
@@ -270,9 +297,9 @@ int main() {
     cart_product(dims_indices, D);
     #pragma omp parallel for 
     for (int i = 1; i <= nentries; i++) {
-        vector<vector<vector<arma::uword>>> S;
+        vector<Tensor> S;
         subsets(D, S, i);
-        unordered_map<vector<arma::uword>, vector<vector<arma::uword>>, vecHash> Shash;
+        unordered_map<SimplifiedTensor, Tensor, vecHash> Shash;
         for (auto &s : S) {
             vector<arma::uword> vec(i);
             for (int j = 0; j < i; j++) {
@@ -281,24 +308,19 @@ int main() {
             Shash.insert({vec, s});
         }
         int ntensors = binom(nentries, i);
-        vector<int> perm(dims[0]);
-        iota(perm.begin(), perm.end(), 0);
+        vector<vector<int>> perms(ndims);
+        for (int j = 0; j < ndims; j++) {
+            vector<int> perm(dims[j]);
+            iota(perm.begin(), perm.end(), 0);
+            perms[j] = perm;
+        }
         int n_completable = 0;
         while (!Shash.empty()) {
-            int n_unique_tensors = 1;
-            vector<vector<arma::uword>> T = Shash.begin()->second;
-            vector<arma::uword> Tkey = Shash.begin()->first;
-            Shash.extract(Tkey);
-            vector<vector<arma::uword>> Tcopy(i);
+            Tensor T = Shash.begin()->second;
+            SimplifiedTensor Tkey = Shash.begin()->first;
+            Tensor Tcopy(T.size());
             copy(T.begin(), T.end(), Tcopy.begin());
-            while (next_permutation(perm.begin(), perm.end())) {
-                for (int j = 0; j < T.size(); j++) {
-                    Tcopy[j][0] = perm[T[j][0]];
-                }
-                vector<arma::uword> key(Tcopy.size());
-                shorten_indices(Tcopy, key, dim_prods);
-                if (!Shash.extract(key).empty()) n_unique_tensors++;
-            }
+            int n_unique_tensors = iterate_perms(perms, T, Tcopy, Shash, dim_prods, 0, 0);
             if (is_finitely_completable(J, Tkey, Jrank)) n_completable += n_unique_tensors;
         }
         cout << n_completable;
