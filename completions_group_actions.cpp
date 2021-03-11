@@ -71,7 +71,7 @@ void subsets_rec(
     }
     for (int i = index; i < in.size(); i++) {
         current.push_back(in[i]);
-        subsets_rec(in, out, current, k + 1, i + 1, depth + 1);
+        subsets_rec(in, out, current, k, i + 1, depth + 1);
         current.pop_back();
     }
 }
@@ -129,15 +129,6 @@ void validate_dimensions(vector<int> &dims) {
         exit(EXIT_FAILURE);
     }
 }
-
-// boost::dynamic_bitset<> sigma_perm(boost::dynamic_bitset<> T, vector<vector<int>> &perms, vector<int> dim_prods)
-// {
-//     unsigned long source = 0;
-//     int M = T.count();
-//     for (int i = 0; i < M; i++) {
-//         source += 1 >> L;
-//     }
-// }
 
 void print_progress(float fprogress) {
     int percentage = int(fprogress * 100);
@@ -275,17 +266,9 @@ int main() {
     }
     int tensors_in_total = 0;
     for (int i = 0; i <= nentries; i++) tensors_in_total += binom(nentries, i);
-    // All possible partial tensors represented as subsets of all entries as a bitmap
-    // vector<boost::dynamic_bitset<>> S(tensors_in_total);
-    // unordered_set<unsigned long> Shash; 
-    // for (int i = 0; i < tensors_in_total; i++) {
-    //     boost::dynamic_bitset<> s(nentries, i);
-    //     S[i] = s;
-    //     Shash.insert(s.to_ulong());
-    // }
     vector<vector<arma::uword>> D;
     cart_product(dims_indices, D);
-    
+    #pragma omp parallel for 
     for (int i = 1; i <= nentries; i++) {
         vector<vector<vector<arma::uword>>> S;
         subsets(D, S, i);
@@ -301,14 +284,13 @@ int main() {
         vector<int> perm(dims[0]);
         iota(perm.begin(), perm.end(), 0);
         int n_completable = 0;
-        while (!S.empty()) {
-            int n_unique_tensors = 0;
-            vector<vector<arma::uword>> T = *(S.begin());
+        while (!Shash.empty()) {
+            int n_unique_tensors = 1;
+            vector<vector<arma::uword>> T = Shash.begin()->second;
+            vector<arma::uword> Tkey = Shash.begin()->first;
+            Shash.extract(Tkey);
             vector<vector<arma::uword>> Tcopy(i);
             copy(T.begin(), T.end(), Tcopy.begin());
-            vector<arma::uword> Tkey(T.size());
-            shorten_indices(T, Tkey, dim_prods);
-            if (!Shash.extract(Tkey).empty()) n_unique_tensors++;
             while (next_permutation(perm.begin(), perm.end())) {
                 for (int j = 0; j < T.size(); j++) {
                     Tcopy[j][0] = perm[T[j][0]];
