@@ -7,6 +7,8 @@
 #include <armadillo>
 #include <iterator>
 #include <stack>
+#include <list>
+#include <memory>
 
 using namespace std;
 using namespace arma;
@@ -139,17 +141,65 @@ int get_orbit_size(vector<vector<int>> &E)
 // Checks whether adding a given entry will change the counts so that the two rules are still satisfied
 bool satisfies_rules(vector<vector<int>> &counts, vector<int> &dims, vector<arma::uword> &entry)
 {
-    // k is the dimension
-    for (int k = 0; k < entry.size(); k++) {
-        arma::uword i = entry[k];
-        if (i == 0) {
-            if (k > 0 && dims[k - 1] == dims[k] && counts[k - 1][0] <= counts[k][0]) return false;
-        } else if(counts[k][i - 1] <= counts[k][i]) {
-            return false;
+    vector<vector<int>> counts_cpy(counts.size());
+    for (int i = 0; i < counts.size(); i++) {
+        vector<int> vec(counts[i].size());
+        counts_cpy[i] = vec;
+        for (int j = 0; j < vec.size(); j++) {
+            counts_cpy[i][j] = counts[i][j];
         }
     }
+    for (int k = 0; k < entry.size(); k++) {
+        counts_cpy[k][entry[k]]++;
+    }
+    // Rule 1
+    for (int k = 0; k < entry.size(); k++) {
+        for (int i = 1; i < dims[k]; i++) {
+            if (counts_cpy[k][i - 1] < counts_cpy[k][i]) {
+                return false;
+            }
+        }
+        //arma::uword i = entry[k];
+        //if (i > 0 && counts_cpy[k][i - 1] < counts_cpy[k][i]) return false; 
+    }
+    // Rules 2 and 3
+    for (int k = 1; k < entry.size(); k++) {
+        if (dims[k] != dims[k - 1]) continue;
+        int i = 0;
+        bool equal = true;
+        while (equal && i < dims[k]) {
+            int diff = counts_cpy[k - 1][i] - counts_cpy[k][i]; 
+            if (diff < 0) {
+                return false;
+            }
+            if (diff > 0) {
+                equal = false;
+            }
+            i++;
+        }
+    }
+    // for (int k = 1; k < entry.size(); k++) {
+    //     arma::uword i = entry[k];
+    //     int diff = counts[k - 1][i] - counts[k][i];
+    //     arma::uword j = entry[k - 1];
+    //     if (j == i) diff++;
+    //     if (i == 0 && diff <= 0) return false;
+    //     else if (i > 0 && diff <= 0) {
+    //         int jdiff = counts[k - 1][i - 1] - counts[k][i - 1];
+    //         if (j == i - 1) jdiff++;
+    //         else if (j == i) diff++;
+    //         if (jdiff == 0) return false;
+    //     }
+    // }
     return true;
 }
+
+struct graph_node {
+    list<graph_node *> neighbors;
+    graph_node *parent;
+    arma::uword value;
+    bool visited;
+};
 
 int main() {
     vector<int> dims;
@@ -233,12 +283,15 @@ int main() {
     //stack<vector<arma::uword>> entry_stack;
 
     // Adjacency list
-    int G[nentries][nentries];
-    for (int i = 0; i < nentries; i++) {
-        for (int j = 0; j < nentries; j++) {
-            G[i][j] = 0;
-        }
-    }
+    //int G[nentries][nentries];
+    list<graph_node *> l;
+    graph_node G = { l, nullptr, 0, true };
+    graph_node *current_node = &G;
+    // for (int i = 0; i < nentries; i++) {
+    //     for (int j = 0; j < nentries; j++) {
+    //         G[i][j] = 0;
+    //     }
+    // }
     // counts[i][j] is how many entries have the ith index equal to j
     vector<vector<int>> counts(ndims);
     for (int i = 0; i < ndims; i++) {
@@ -248,8 +301,9 @@ int main() {
     }
     int vertices_left = 1;
     int iterations = 0;
-    int vertices_added = 0;
+    int vertices_added = 1;
     do {
+        //cout << "current_node value: " << current_node->value << endl;
         iterations++;
         int M = E.size();
         if (is_finitely_completable(J, E, Jrank)) {
@@ -264,35 +318,66 @@ int main() {
         // Loop through potential new entries to add satisfying the two rules
         for (arma::uword i = last_added + 1; index_vec[0] <= first_index + 1 && i < nentries; i++) {
             int_to_index_vec(i, index_vec, dim_prods, dims);
-            if (G[last_added][i] == 0 && satisfies_rules(counts, dims, index_vec)) {
+            bool is_neighbor = false;
+            for (graph_node *vertex : current_node->neighbors) {
+                if (vertex->value == i) {
+                    is_neighbor = true;
+                    break;
+                }
+            }
+            if (!is_neighbor && satisfies_rules(counts, dims, index_vec)) {
                 new_entries.push_back(i);
             }
+            // if (G[last_added][i] == 0 && satisfies_rules(counts, dims, index_vec)) {
+            //     new_entries.push_back(i);
+            // }
         }
             // Mark visited
             //flat_indices.pop_back();
         // Add new vertices to visit
         vertices_left += new_entries.size();
         vertices_added += new_entries.size();
-        cout << "iteration: " << iterations << ", vertices added: " << new_entries.size() << endl;
+        //cout << "iteration: " << iterations << ", vertices added: " << new_entries.size() << endl;
+        // for (int i = 0; i < new_entries.size(); i++) {
+        //     //entry_stack.push(new_entries[i]);
+        //     G[last_added][new_entries[i]] = 1;
+        //     cout << "entry " << new_entries[i] << " added" << endl;
+        // }
         for (int i = 0; i < new_entries.size(); i++) {
-            //entry_stack.push(new_entries[i]);
-            G[last_added][new_entries[i]] = 1;
-            cout << "entry " << new_entries[i] << " added" << endl;
+            list<graph_node *> l;
+            graph_node *vertex = new graph_node();
+            vertex->neighbors = l;
+            vertex->parent = current_node;
+            vertex->value = new_entries[i];
+            vertex->visited = false;
+            current_node->neighbors.push_back(vertex);
+            //cout << "value of vertex added: " << vertex->value << endl;
         }
         arma::uword new_entry;
+        graph_node *new_vertex = nullptr;
         bool found = false;
-        while (!found && !E.empty()) {
+        while (!found && current_node && !E.empty()) {
             arma::uword last_entry = E.back();
-            for (int i = 0; i < nentries && !found; i++) {
-                if (G[last_entry][i] == 1) {
-                    G[last_entry][i] = 2;
-                    vertices_left--;
+            for (graph_node *vertex : current_node->neighbors) {
+                if (!vertex->visited) {
                     found = true;
-                    new_entry = i;
+                    vertex->visited = true;
+                    new_vertex = vertex;
+                    new_entry = vertex->value;
+                    break;
                 }
             }
+            // for (int i = 0; i < nentries && !found; i++) {
+            //     if (G[last_entry][i] == 1) {
+            //         G[last_entry][i] = 2;
+            //         vertices_left--;
+            //         found = true;
+            //         new_entry = i;
+            //     }
+            // }
             if (!found) {
                 E.pop_back();
+                current_node = current_node->parent;
                 vector<arma::uword> index_vec(ndims);
                 int_to_index_vec(last_entry, index_vec, dim_prods, dims);
                 for (int i = 0; i < ndims; i++) {
@@ -302,6 +387,7 @@ int main() {
         }
         if (found) {
             E.push_back(new_entry);
+            current_node = new_vertex;
             vector<arma::uword> index_vec(ndims);
             int_to_index_vec(new_entry, index_vec, dim_prods, dims);
             for (int i = 0; i < ndims; i++) {
