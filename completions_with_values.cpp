@@ -107,6 +107,7 @@ void print_progress(float fprogress) {
 }
 
 int main() {
+    bool latex_output = false;
     vector<int> dims;
     get_dimensions(dims); 
     validate_dimensions(dims);
@@ -156,7 +157,7 @@ int main() {
     vector<arma::uword> all_indices(nentries);
     iota(all_indices.begin(), all_indices.end(), 0);
     int Jrank = get_jacobian_rank(J, all_indices);
-    vector<int> ncompletable(nentries, 0);
+    vector<int> ncompletable(nentries + 1, 0);
     int n_tensors = 0;
     for (int i = 0; i <= nentries; i++) {
         n_tensors += binom(nentries, i);
@@ -173,7 +174,7 @@ int main() {
             int entries_left = nentries - locations[locations.size() - 1] - 1;
             for (int i = current_size; i <= nentries; i++) {
                 int n_completable_to_add = binom(entries_left, i - current_size);
-                ncompletable[i - 1] += n_completable_to_add;
+                ncompletable[i] += n_completable_to_add;
                 progress += n_completable_to_add;
             }
             if (locations[n] == nentries - 1) {
@@ -206,17 +207,27 @@ int main() {
         }
     }
     cout << endl;
-    for (int i = 1; i <= nentries; i++) {
-        int ntensors = binom(nentries, i);
-        cout << ncompletable[i - 1];
-        cout << "/";
-        cout << ntensors;
-        cout << " of ";
-        cout << dims_string;
-        cout << " tensors with ";
-        cout << i;
-        cout << " observed entries are finitely completable" << endl;
-        cout << flush;
+    if (latex_output) {
+        cout << "Size & Finitely completable & Total \\\\" << endl;
+        cout << "\\hline" << endl;
+        for (int i = 0; i <= nentries; i++) {
+            int ntensors = binom(nentries, i);
+            cout << i << " & " << ncompletable[i] << " & " << ntensors << " \\\\" << endl;
+            cout << "\\hline" << endl;
+        }
+    } else {
+        for (int i = 0; i <= nentries; i++) {
+            int ntensors = binom(nentries, i);
+            cout << ncompletable[i];
+            cout << "/";
+            cout << ntensors;
+            cout << " of ";
+            cout << dims_string;
+            cout << " tensors with ";
+            cout << i;
+            cout << " observed entries are finitely completable" << endl;
+            cout << flush;
+        }
     }
     return 0;
 }
