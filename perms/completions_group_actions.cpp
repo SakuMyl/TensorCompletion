@@ -147,9 +147,10 @@ void print_progress(float fprogress) {
 struct vecHash
 {
     size_t operator()(const SimplifiedTensor &V) const {
-        int hash = V.size();
+        int hash = 0;
         for (auto &i : V) {
-            hash ^= i + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+            hash |= 1 << (i % (8 * sizeof(int)));
+            // hash ^= i + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         }
         return hash;
     }
@@ -183,6 +184,7 @@ int iterate_perms(
     if (index == perms.size()) {
         SimplifiedTensor key(current_perm.size());
         shorten_indices(current_perm, key, multipliers);
+        sort(key.begin(), key.end());
         if (!hashmap.extract(key).empty()) return n_unique + 1;
         else return n_unique;
     }

@@ -9,10 +9,14 @@
 #include <stack>
 #include <list>
 #include <memory>
+#include <unordered_set>
 
 using namespace std;
 using namespace arma;
 const double EPS = 1E-9;
+
+using Tensor = vector<vector<arma::uword>>;
+using SimplifiedTensor = vector<arma::uword>;
 
 template <typename T>
 T sum(vector<T> &vec) {
@@ -54,6 +58,12 @@ void cart_product(
     ) {
     vector<T> current;
     cart_product_rec(in, out, current, 0);
+}
+
+int factorial(int n) {
+    assert(n >= 0);
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
 }
 
 int binom(int n, int k) {
@@ -118,10 +128,15 @@ int index_vec_to_int(vector<arma::uword> &long_index, vector<int> &multipliers)
     return ret;
 }
 
+int kth_index(arma::uword in, int k, vector<int> &dims, vector<int> &multipliers)
+{
+    return (in / multipliers[k]) % dims[k];
+}
+
 void int_to_index_vec(arma::uword in, vector<arma::uword> &out, vector<int> &multipliers, vector<int> &dims)
 {
     for (int i = 0; i < multipliers.size(); i++) {
-        out[i] = (in / multipliers[i]) % dims[i];
+        out[i] = kth_index(in, i, dims, multipliers);
     }
 }
 
@@ -132,35 +147,106 @@ void shorten_indices(vector<vector<arma::uword>> &tensor, vector<arma::uword> &o
     }
 }
 
-int get_orbit_size(vector<vector<int>> &E)
+struct vecHash
 {
-    // Mock for now
-    return 1;
+    size_t operator()(const SimplifiedTensor &V) const {
+        int hash = 0;
+        for (auto &i : V) {
+            int mod = i % (8 * sizeof(int));
+            hash |= 1 << mod;
+            // hash ^= i + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        }
+        return hash;
+    }
+};
+
+int iterate_perms(
+    vector<vector<int>> &perms,
+    Tensor &perm_base,
+    Tensor &current_perm,
+    unordered_set<SimplifiedTensor, vecHash> &permuted_tensors,
+    unordered_set<SimplifiedTensor, vecHash> &representatives,
+    vector<int> &multipliers,
+    int n_unique,
+    int index
+    ) {
+    return 0;
+    // In case some permutation already exists in the representatives, we have hit an existing orbit
+    if (n_unique < 0) return -1;
+    if (index == perms.size()) {
+        SimplifiedTensor key(current_perm.size());
+        shorten_indices(current_perm, key, multipliers);
+        sort(key.begin(), key.end());
+        // If representatives contains some non-identity permutation, stop looking
+        if (representatives.contains(key)) return -1;
+        if (permuted_tensors.contains(key)) return n_unique;
+        else {
+            permuted_tensors.insert(key);
+            return n_unique + 1;
+        }
+    }
+    vector<int> &perm = perms[index];
+    do {
+        for (int entry = 0; entry < perm_base.size(); entry++) {
+            current_perm[entry][index] = perm[perm_base[entry][index]];
+        }
+        n_unique = iterate_perms(perms, perm_base, current_perm, permuted_tensors, representatives, multipliers, n_unique, index + 1);
+        if (n_unique < 0) return -1;
+    } while (next_permutation(perm.begin(), perm.end()));
+    return n_unique;
+}
+
+int stabilizer_size(vector<vector<int>> &counts, vector<int> &E_bin, vector<int> &dims, vector<int> &dim_prods)
+{
+    int distinct_transpositions = 1;
+    int distinct_perms = 1;
+    for (int dim = 0; dim < dims.size(); dim++) {
+        auto &dim_counts = counts[dim];
+        int prev_equal_count = 0;
+        for (int j = 1; j <= dims[dim]; j++) {
+            if (j == dims[dim] || dim_counts[prev_equal_count] != dim_counts[j]) {
+                if (j - prev_equal_count > 1) {
+                    int prev_equal_slice = prev_equal_count;
+                    for (int k = prev_equal_slice + 1; k <= j; k++) {
+                        if (k == j) distinct_perms *= factorial(k - prev_equal_slice);
+                        else {
+                            int offset = dim_prods[dim] * (k - prev_equal_slice);
+                            bool equal = true;
+                            for (arma::uword e = 0; e < E_bin.size(); e++) {
+                                if (kth_index(e, dim, dims, dim_prods) == prev_equal_slice) {
+                                    if (E_bin[e] != E_bin[e + offset]) {
+                                        equal = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!equal) {
+                                if (k - prev_equal_slice > 1) distinct_perms *= factorial(k - prev_equal_slice);
+                                prev_equal_slice = k;
+                            }
+                        }
+                    }
+                }
+                prev_equal_count = j;
+            }
+        }
+    }
+    return distinct_perms * distinct_transpositions;
 }
 
 // Checks whether adding a given entry will change the counts so that the two rules are still satisfied
-bool satisfies_rules(vector<vector<int>> &counts, vector<int> &dims, vector<arma::uword> &entry)
+bool satisfies_rules(vector<vector<int>> &counts, vector<int> &dims, vector<arma::uword> &entry, vector<int> &E_bin, vector<int> &dim_prods)
 {
-    vector<vector<int>> counts_cpy(counts.size());
-    for (int i = 0; i < counts.size(); i++) {
-        vector<int> vec(counts[i].size());
-        counts_cpy[i] = vec;
-        for (int j = 0; j < vec.size(); j++) {
-            counts_cpy[i][j] = counts[i][j];
-        }
-    }
-    for (int k = 0; k < entry.size(); k++) {
-        counts_cpy[k][entry[k]]++;
-    }
     // Rule 1
     for (int k = 0; k < entry.size(); k++) {
         for (int i = 1; i < dims[k]; i++) {
-            if (counts_cpy[k][i - 1] < counts_cpy[k][i]) {
+            int diff = counts[k][i - 1] - counts[k][i];
+            if (entry[k] == i - 1) diff++;
+            else if (entry[k] == i) diff--;
+            if (diff < 0) {
                 return false;
             }
         }
-        //arma::uword i = entry[k];
-        //if (i > 0 && counts_cpy[k][i - 1] < counts_cpy[k][i]) return false; 
     }
     // Rules 2 and 3
     for (int k = 1; k < entry.size(); k++) {
@@ -168,7 +254,10 @@ bool satisfies_rules(vector<vector<int>> &counts, vector<int> &dims, vector<arma
         int i = 0;
         bool equal = true;
         while (equal && i < dims[k]) {
-            int diff = counts_cpy[k - 1][i] - counts_cpy[k][i]; 
+            int diff = counts[k - 1][i] - counts[k][i]; 
+            if (entry[k - 1] == i) diff++;
+            if (entry[k] == i) diff--;
+
             if (diff < 0) {
                 return false;
             }
@@ -178,19 +267,22 @@ bool satisfies_rules(vector<vector<int>> &counts, vector<int> &dims, vector<arma
             i++;
         }
     }
-    // for (int k = 1; k < entry.size(); k++) {
-    //     arma::uword i = entry[k];
-    //     int diff = counts[k - 1][i] - counts[k][i];
-    //     arma::uword j = entry[k - 1];
-    //     if (j == i) diff++;
-    //     if (i == 0 && diff <= 0) return false;
-    //     else if (i > 0 && diff <= 0) {
-    //         int jdiff = counts[k - 1][i - 1] - counts[k][i - 1];
-    //         if (j == i - 1) jdiff++;
-    //         else if (j == i) diff++;
-    //         if (jdiff == 0) return false;
-    //     }
-    // }
+    // Rule 4
+    int entry_index = index_vec_to_int(entry, dim_prods);
+    for (int k = 0; k < entry.size(); k++) {
+         arma::uword i = entry[k];
+         if (i == 0) continue;
+         if (counts[k][i] == counts[k][i - 1]) {
+            int offset = dim_prods[k];
+            for (arma::uword j = 0; j < E_bin.size(); j++) {
+                if (kth_index(j, k, dims, dim_prods) != i) continue;
+                int diff = E_bin[j - offset] - E_bin[j];
+                if (j == entry_index) diff--;
+                if (diff > 0) break;
+                else if (diff < 0) return false;
+            }
+         }
+    }
     return true;
 }
 
@@ -276,22 +368,12 @@ int main() {
     int bar_width = 70;
     
     vector<arma::uword> E(1, 0);
-    //vector<arma::uword> vec(ndims, 0);
-    //E[0] = vec;
+    vector<int> E_bin(nentries, 0);
+    E_bin[0] = 1;
     int M = 1;
-    //flat_indices[0] = index_vec_to_int(E[0], dim_prods);
-    //stack<vector<arma::uword>> entry_stack;
-
-    // Adjacency list
-    //int G[nentries][nentries];
     list<graph_node *> l;
     graph_node G = { l, nullptr, 0, true };
     graph_node *current_node = &G;
-    // for (int i = 0; i < nentries; i++) {
-    //     for (int j = 0; j < nentries; j++) {
-    //         G[i][j] = 0;
-    //     }
-    // }
     // counts[i][j] is how many entries have the ith index equal to j
     vector<vector<int>> counts(ndims);
     for (int i = 0; i < ndims; i++) {
@@ -299,25 +381,67 @@ int main() {
         vec[0] = 1;
         counts[i].assign(vec.begin(), vec.end());
     }
-    int vertices_left = 1;
+    vector<vector<arma::uword>> long_indices(nentries);
+    for (int i = 0; i < nentries; i++) {
+        vector<arma::uword> index_vec(ndims);
+        int_to_index_vec(i, index_vec, dim_prods, dims);
+        long_indices[i] = index_vec;
+    }
     int iterations = 0;
-    int vertices_added = 1;
-    do {
-        //cout << "current_node value: " << current_node->value << endl;
-        iterations++;
-        int M = E.size();
-        if (is_finitely_completable(J, E, Jrank)) {
-            int n = get_orbit_size(counts);
-            ncompletable[M] += n;
+    unordered_set<SimplifiedTensor, vecHash> representatives;
+    vector<vector<int>> perms(ndims);
+    for (int j = 0; j < ndims; j++) {
+        vector<int> perm(dims[j]);
+        perms[j] = perm;
+    }
+    int n_perms = factorial(dims[0]);
+    int prev = 0;
+    for (int i = 1; i <= ndims; i++) {
+        n_perms *= factorial(dims[i]);
+        if (i == ndims || dims[i] != dims[prev]) {
+            n_perms *= factorial(i - prev);
+            prev = i;
         }
+    }
+    do {
+        iterations++;
+        if (is_finitely_completable(J, E, Jrank)) {
+            int orbit_size = n_perms / stabilizer_size(counts, E_bin, dims, dim_prods);
+            // cout << "E.size(): " << E.size() << endl;
+            // cout << orbit_size << endl; 
+            // for (auto &c : counts) {
+            //     for (auto &p : c) {
+            //         cout << p << " ";
+            //     }
+            //     cout << endl;
+            // }
+            ncompletable[E.size()] += orbit_size;
+            // Tensor perm_base(E.size());
+            // for (int j = 0; j < E.size(); j++) {
+            //     perm_base[j] = long_indices[E[j]];
+            // }
+            // Tensor current_perm(perm_base.size());
+            // for (int i = 0; i < perm_base.size(); i++) {
+            //     for (int j = 0; j < perm_base[i].size(); j++) {
+            //         current_perm[i].push_back(perm_base[i][j]);
+            //     }
+            // }
+            // for (int j = 0; j < ndims; j++) {
+            //     iota(perms[j].begin(), perms[j].end(), 0);
+            // }
+            // unordered_set<SimplifiedTensor, vecHash> permuted_tensors;
+            // int n_unique = iterate_perms(perms, perm_base, current_perm, permuted_tensors, representatives, dim_prods, 0, 0);
+            // if (n_unique >= 0) {
+            //     ncompletable[E.size()] += n_unique;
+            //     progress += n_unique;
+            //     representatives.insert(E);
+            // }
+        } 
         vector<arma::uword> new_entries;
         arma::uword last_added = E.back();
-        vector<arma::uword> index_vec(ndims);
         int first_index = last_added / dim_prods[0];
-        index_vec[0] = (last_added +  1) / dim_prods[0];
-        // Loop through potential new entries to add satisfying the two rules
-        for (arma::uword i = last_added + 1; index_vec[0] <= first_index + 1 && i < nentries; i++) {
-            int_to_index_vec(i, index_vec, dim_prods, dims);
+        // Loop through potential new entries to add satisfying the rules
+        for (arma::uword i = last_added + 1; i < nentries && long_indices[i][0] <= first_index + 1; i++) {
             bool is_neighbor = false;
             for (graph_node *vertex : current_node->neighbors) {
                 if (vertex->value == i) {
@@ -325,24 +449,11 @@ int main() {
                     break;
                 }
             }
-            if (!is_neighbor && satisfies_rules(counts, dims, index_vec)) {
+            if (!is_neighbor && satisfies_rules(counts, dims, long_indices[i], E_bin, dim_prods)) {
                 new_entries.push_back(i);
             }
-            // if (G[last_added][i] == 0 && satisfies_rules(counts, dims, index_vec)) {
-            //     new_entries.push_back(i);
-            // }
         }
-            // Mark visited
-            //flat_indices.pop_back();
         // Add new vertices to visit
-        vertices_left += new_entries.size();
-        vertices_added += new_entries.size();
-        //cout << "iteration: " << iterations << ", vertices added: " << new_entries.size() << endl;
-        // for (int i = 0; i < new_entries.size(); i++) {
-        //     //entry_stack.push(new_entries[i]);
-        //     G[last_added][new_entries[i]] = 1;
-        //     cout << "entry " << new_entries[i] << " added" << endl;
-        // }
         for (int i = 0; i < new_entries.size(); i++) {
             list<graph_node *> l;
             graph_node *vertex = new graph_node();
@@ -351,7 +462,6 @@ int main() {
             vertex->value = new_entries[i];
             vertex->visited = false;
             current_node->neighbors.push_back(vertex);
-            //cout << "value of vertex added: " << vertex->value << endl;
         }
         arma::uword new_entry;
         graph_node *new_vertex = nullptr;
@@ -367,49 +477,39 @@ int main() {
                     break;
                 }
             }
-            // for (int i = 0; i < nentries && !found; i++) {
-            //     if (G[last_entry][i] == 1) {
-            //         G[last_entry][i] = 2;
-            //         vertices_left--;
-            //         found = true;
-            //         new_entry = i;
-            //     }
-            // }
             if (!found) {
+                auto last = E.back();
+                E_bin[last] = 0;
                 E.pop_back();
                 current_node = current_node->parent;
-                vector<arma::uword> index_vec(ndims);
-                int_to_index_vec(last_entry, index_vec, dim_prods, dims);
                 for (int i = 0; i < ndims; i++) {
-                    counts[i][index_vec[i]]--;
+                    counts[i][long_indices[last_entry][i]]--;
                 }
             }
         }
         if (found) {
             E.push_back(new_entry);
+            E_bin[new_entry] = 1;
             current_node = new_vertex;
-            vector<arma::uword> index_vec(ndims);
-            int_to_index_vec(new_entry, index_vec, dim_prods, dims);
             for (int i = 0; i < ndims; i++) {
-                counts[i][index_vec[i]]++;
+                counts[i][long_indices[new_entry][i]]++;
             }
         }
-        //flat_indices.push_back(index_vec_to_int(new_entry, dim_prods));
     } while(!E.empty());
-    cout << "iterations: " << iterations << ", vertices: " << vertices_added << endl;
+    cout << "iterations: " << iterations << endl;
     cout << endl;
-    // // for (int i = 0; i <= nentries; i++) {
-    // //     int ntensors = binom(nentries, i);
-    // //     cout << ncompletable[i - 1];
-    // //     cout << "/";
-    // //     cout << ntensors;
-    // //     cout << " of ";
-    // //     cout << dims_string;
-    // //     cout << " tensors with ";
-    // //     cout << i;
-    // //     cout << " observed entries are finitely completable" << endl;
-    // //     cout << flush;
-    // // }
+    for (int i = 0; i <= nentries; i++) {
+        int ntensors = binom(nentries, i);
+        cout << ncompletable[i];
+        cout << "/";
+        cout << ntensors;
+        cout << " of ";
+        cout << dims_string;
+        cout << " tensors with ";
+        cout << i;
+        cout << " observed entries are finitely completable" << endl;
+        cout << flush;
+    }
     return 0;
 }
 
