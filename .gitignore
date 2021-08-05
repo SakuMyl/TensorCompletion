@@ -1,5 +1,5 @@
 **/main
 par
 perms
-naive/completions.m2
-naive/dpcompletions.m2
+src/completions.m2
+src/dpcompletions.m2
